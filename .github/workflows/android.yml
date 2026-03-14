@@ -1,0 +1,66 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip \
+          autoconf libtool pkg-config zlib1g-dev libncurses5-dev \
+          libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev \
+          libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
+        
+    - name: Install Python dependencies
+      run: |
+        pip3 install --upgrade pip
+        pip3 install buildozer cython
+        
+    - name: Build APK
+      run: |
+        # Создаём spec файл если нет
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+          # Настраиваем buildozer.spec
+          sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
+          sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
+          sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
+          sed -i 's/requirements = python3/requirements = python3,kivy/' buildozer.spec
+          sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
+          sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+        fi
+        
+        # Запускаем сборку
+        buildozer -v android debug
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: messenger-apk
+        path: bin/*.apk
+        retention-days: 30
+        
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: .buildozer/android/platform/build-*/dists/*/build.log
+        retention-days: 7
