@@ -27,26 +27,6 @@ jobs:
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev libgl1-mesa-dev libgles2-mesa-dev libmtdev-dev xclip xsel libjpeg-dev libunwind-dev wget
           pip3 install --user buildozer==1.5.0 cython==0.29.33
 
-      - name: ✅ Accept Android SDK licenses (RELIABLE METHOD)
-        run: |
-          # Ждём, пока Buildozer скачает cmdline-tools
-          echo "Waiting for Android SDK to be downloaded..."
-          for i in {1..60}; do
-            SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
-            if [ -d "$SDK_PATH/cmdline-tools" ]; then
-              # Находим sdkmanager
-              SDKMANAGER=$(find "$SDK_PATH/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -1)
-              if [ -n "$SDKMANAGER" ]; then
-                echo "Found sdkmanager: $SDKMANAGER"
-                # ✅ Принимаем ВСЕ лицензии автоматически
-                yes | $SDKMANAGER --licenses --sdk_root="$SDK_PATH"
-                echo "✅ Licenses accepted!"
-                break
-              fi
-            fi
-            sleep 5
-          done
-
       - name: Prepare buildozer.spec
         run: |
           if [ ! -f buildozer.spec ]; then buildozer init; fi
@@ -62,6 +42,23 @@ jobs:
           sed -i 's/# android.minapi =/android.minapi = 21/' buildozer.spec
           sed -i 's/# android.ndk =/android.ndk = 23b/' buildozer.spec
 
+      - name: ✅ Accept ALL Android SDK licenses (RELIABLE)
+        run: |
+          # Ждём, пока появится sdkmanager
+          echo "Waiting for Android SDK..."
+          for i in {1..60}; do
+            SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
+            SDKMANAGER=$(find "$SDK_PATH" -name "sdkmanager" -type f 2>/dev/null | head -1)
+            if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+              echo "Found sdkmanager: $SDKMANAGER"
+              # ✅ Принимаем ВСЕ лицензии автоматически
+              yes | $SDKMANAGER --licenses --sdk_root="$SDK_PATH" || true
+              echo "✅ Licenses accepted!"
+              break
+            fi
+            sleep 5
+          done
+
       - name: Build APK
         run: |
           export PATH=$PATH:/home/runner/.local/bin
@@ -69,7 +66,7 @@ jobs:
           buildozer -v android debug
         continue-on-error: true
 
-      - name: Upload APK
+      - name: Upload APK (if success)
         if: success()
         uses: actions/upload-artifact@v4
         with:
