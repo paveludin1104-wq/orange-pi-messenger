@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    container: kivy/buildozer:latest  # ✅ Готовый образ с настроенным окружением
+    container: kivy/buildozer:latest
 
     steps:
       - name: Checkout code
@@ -29,7 +29,6 @@ jobs:
 
       - name: Build APK
         run: |
-          # В образе kivy/buildozer лицензии уже приняты, Java настроена
           buildozer -v android debug
         continue-on-error: true
 
