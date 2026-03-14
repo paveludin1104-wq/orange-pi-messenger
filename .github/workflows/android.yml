@@ -5,7 +5,6 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
-# ✅ Исправление предупреждения про Node.js
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -26,18 +25,16 @@ jobs:
       run: |
         python -m pip install --upgrade pip setuptools wheel
         
-    - name: Install system dependencies (MINIMAL)
+    - name: Install system dependencies
       run: |
-        # Только необходимые пакеты для Kivy + Buildozer
         sudo apt-get update -y
         sudo apt-get install -y \
           git zip unzip openjdk-17-jdk python3-pip \
           autoconf libtool pkg-config zlib1g-dev libncurses5-dev \
           libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev \
           libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev \
-          libgl1-mesa-dev libgles2-mesa-dev \
-          libmtdev-dev xclip xsel libjpeg-dev \
-          libunwind-dev  # ✅ Добавили зависимость для gstreamer (на всякий случай)
+          libgl1-mesa-dev libgles2-mesa-dev libmtdev-dev xclip xsel \
+          libjpeg-dev libunwind-dev
         sudo apt-get clean
         
     - name: Install Buildozer and Cython
@@ -57,6 +54,22 @@ jobs:
         sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
         sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
         sed -i 's/# orientation = portrait/orientation = portrait/' buildozer.spec
+        # ✅ Используем стабильную версию build-tools
+        sed -i 's/# android.api =/android.api = 33/' buildozer.spec
+        sed -i 's/# android.minapi =/android.minapi = 21/' buildozer.spec
+        sed -i 's/# android.ndk =/android.ndk = 23b/' buildozer.spec
+        
+    - name: ✅ Pre-accept Android SDK licenses
+      run: |
+        # Создаём директорию для лицензий
+        mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
+        
+        # Хэши принятых лицензий (официальные)
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo "d975f751698a77b662f1254ddbeed3901e976f5a" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
         
     - name: Show buildozer.spec
       run: cat buildozer.spec
@@ -64,6 +77,7 @@ jobs:
     - name: Build APK
       run: |
         export PATH=$PATH:/home/runner/.local/bin
+        export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
         buildozer -v android debug 2>&1 | tee build_output.log
       continue-on-error: true
         
