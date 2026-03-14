@@ -5,20 +5,31 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # ✅ Фикс предупреждения Node.js
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-    container: kivy/buildozer:latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev libgl1-mesa-dev libgles2-mesa-dev libmtdev-dev xclip xsel libjpeg-dev libunwind-dev wget
+          pip3 install --user buildozer==1.5.0 cython==0.29.33
+
       - name: Prepare buildozer.spec
         run: |
-          if [ ! -f buildozer.spec ]; then
-            buildozer init
-          fi
+          if [ ! -f buildozer.spec ]; then buildozer init; fi
           sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
           sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
           sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
@@ -26,14 +37,28 @@ jobs:
           sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
           sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           sed -i 's/# orientation = portrait/orientation = portrait/' buildozer.spec
-          # ✅ Используем СТАБИЛЬНЫЕ версии
           sed -i 's/# android.api =/android.api = 33/' buildozer.spec
           sed -i 's/# android.minapi =/android.minapi = 21/' buildozer.spec
           sed -i 's/# android.ndk =/android.ndk = 23b/' buildozer.spec
 
+      - name: Accept Android SDK licenses
+        run: |
+          # Ждём появления sdkmanager и принимаем лицензии
+          for i in {1..60}; do
+            SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
+            SDKMANAGER=$(find "$SDK_PATH" -name "sdkmanager" -type f 2>/dev/null | head -1)
+            if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+              yes | $SDKMANAGER --licenses --sdk_root="$SDK_PATH" || true
+              echo "✅ Licenses accepted!"
+              break
+            fi
+            sleep 5
+          done
+
       - name: Build APK
         run: |
-          # В образе kivy/buildozer лицензии уже приняты
+          export PATH=$PATH:/home/runner/.local/bin
+          export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
           buildozer -v android debug
         continue-on-error: true
 
