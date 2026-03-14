@@ -9,58 +9,66 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Используем стабильную версию
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3  # Стабильная версия
       
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.8'  # Python 3.8 стабильнее для старых версий buildozer
         
     - name: Install system dependencies
       run: |
-        sudo apt-get update
+        sudo apt-get update -y
         sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip \
           autoconf libtool pkg-config zlib1g-dev libncurses5-dev \
           libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev \
-          libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
+          libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev \
+          libgl1-mesa-dev libgles2-mesa-dev libgstreamer1.0-dev \
+          gstreamer1.0-plugins-{bad,base,good,ugly} gstreamer1.0-{omx,alsa} \
+          libmtdev-dev xclip xsel libjpeg-dev
+        sudo apt-get clean
         
     - name: Install Python dependencies
       run: |
-        pip3 install --upgrade pip
-        pip3 install buildozer cython
+        pip3 install --upgrade pip setuptools wheel
+        pip3 install buildozer==1.4.0 cython==0.29.33
+        
+    - name: Prepare buildozer.spec
+      run: |
+        # Если файла нет - создаем
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+        fi
+        # Обновляем настройки
+        sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
+        sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
+        sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
+        sed -i 's/requirements = python3/requirements = python3,kivy/' buildozer.spec
+        sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
+        sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+        sed -i 's/# orientation = portrait/orientation = portrait/' buildozer.spec
         
     - name: Build APK
       run: |
-        # Создаём spec файл если нет
-        if [ ! -f buildozer.spec ]; then
-          buildozer init
-          # Настраиваем buildozer.spec
-          sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
-          sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
-          sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
-          sed -i 's/requirements = python3/requirements = python3,kivy/' buildozer.spec
-          sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
-          sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-        fi
-        
-        # Запускаем сборку
-        buildozer -v android debug
+        # Запускаем сборку с подробным логом
+        buildozer -v android debug 2>&1 | tee build.log
         
     - name: Upload APK
-      uses: actions/upload-artifact@v4
+      if: success()
+      uses: actions/upload-artifact@v3
       with:
         name: messenger-apk
         path: bin/*.apk
         retention-days: 30
         
-    - name: Upload build log
-      if: always()
-      uses: actions/upload-artifact@v4
+    - name: Upload build log (if failed)
+      if: failure()
+      uses: actions/upload-artifact@v3
       with:
-        name: build-log
-        path: .buildozer/android/platform/build-*/dists/*/build.log
+        name: build-error-log
+        path: build.log
         retention-days: 7
