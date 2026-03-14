@@ -9,16 +9,16 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Используем стабильную версию
+    runs-on: ubuntu-22.04
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3  # Стабильная версия
+      uses: actions/checkout@v4
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.8'  # Python 3.8 стабильнее для старых версий buildozer
+        python-version: '3.8'
         
     - name: Install system dependencies
       run: |
@@ -39,11 +39,9 @@ jobs:
         
     - name: Prepare buildozer.spec
       run: |
-        # Если файла нет - создаем
         if [ ! -f buildozer.spec ]; then
           buildozer init
         fi
-        # Обновляем настройки
         sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
         sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
         sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
@@ -54,12 +52,11 @@ jobs:
         
     - name: Build APK
       run: |
-        # Запускаем сборку с подробным логом
         buildozer -v android debug 2>&1 | tee build.log
         
     - name: Upload APK
       if: success()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # ✅ Обновлено на v4
       with:
         name: messenger-apk
         path: bin/*.apk
@@ -67,7 +64,7 @@ jobs:
         
     - name: Upload build log (if failed)
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # ✅ Обновлено на v4
       with:
         name: build-error-log
         path: build.log
