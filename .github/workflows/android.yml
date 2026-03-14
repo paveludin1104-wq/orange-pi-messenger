@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [master, main]
   workflow_dispatch:
 
 env:
@@ -11,137 +11,55 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.8'
-        
-    - name: Upgrade pip and tools
-      run: |
-        python -m pip install --upgrade pip setuptools wheel
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y \
-          git zip unzip openjdk-17-jdk python3-pip \
-          autoconf libtool pkg-config zlib1g-dev libncurses5-dev \
-          libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev \
-          libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev \
-          libgl1-mesa-dev libgles2-mesa-dev libmtdev-dev xclip xsel \
-          libjpeg-dev libunwind-dev wget
-        sudo apt-get clean
-        
-    - name: Install Buildozer and Cython
-      run: |
-        pip3 install --user buildozer==1.5.0
-        pip3 install --user cython==0.29.33
-        
-    - name: Prepare buildozer.spec
-      run: |
-        if [ ! -f buildozer.spec ]; then
-          buildozer init
-        fi
-        sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
-        sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
-        sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
-        sed -i 's/requirements = python3/requirements = python3,kivy/' buildozer.spec
-        sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
-        sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-        sed -i 's/# orientation = portrait/orientation = portrait/' buildozer.spec
-        # ✅ Используем СТАБИЛЬНЫЕ версии (не rc!)
-        sed -i 's/# android.api =/android.api = 33/' buildozer.spec
-        sed -i 's/# android.minapi =/android.minapi = 21/' buildozer.spec
-        sed -i 's/# android.ndk =/android.ndk = 23b/' buildozer.spec
-        
-    - name: ✅ Pre-accept ALL Android SDK licenses
-      run: |
-        # Создаём директорию для лицензий ДО запуска buildozer
-        mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
-        
-        # ✅ Хэши для android-sdk-license (основная)
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "d975f751698a77b662f1254ddbeed3901e976f5a" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "504667f4c0de7af1a06de9f4b1727b84351f2910" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "4010355254c3064d23e2e55f3e7f4c38e8e1a9f4" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        
-        # ✅ Хэши для android-sdk-preview-license (для preview-компонентов)
-        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-        
-    - name: ✅ Fix sdkmanager path (AFTER SDK download)
-      run: |
-        # Этот шаг запускается ПОСЛЕ того, как buildozer скачает SDK
-        # Поэтому мы используем хук в buildozer через окружение
-        
-        # Создаём скрипт-обёртку для sdkmanager
-        mkdir -p /tmp/buildozer-fix
-        cat > /tmp/buildozer-fix/fix-sdkmanager.sh << 'FIXEOF'
-#!/bin/bash
-SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
 
-# Ждём, пока появится cmdline-tools
-for i in {1..30}; do
-  if [ -d "$SDK_PATH/cmdline-tools" ]; then
-    # Находим актуальный sdkmanager
-    LATEST=$(find "$SDK_PATH/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -1)
-    if [ -n "$LATEST" ]; then
-      mkdir -p "$SDK_PATH/tools/bin"
-      ln -sf "$LATEST" "$SDK_PATH/tools/bin/sdkmanager"
-      echo "✅ Fixed sdkmanager path: $SDK_PATH/tools/bin/sdkmanager -> $LATEST"
-      break
-    fi
-  fi
-  sleep 2
-done
-FIXEOF
-        chmod +x /tmp/buildozer-fix/fix-sdkmanager.sh
-        
-        # Запускаем фикс в фоне (он подождёт появления SDK)
-        /tmp/buildozer-fix/fix-sdkmanager.sh &
-        FIX_PID=$!
-        
-        # Сохраняем PID для ожидания позже
-        echo "FIX_PID=$FIX_PID" >> $GITHUB_ENV
-        
-    - name: Show buildozer.spec
-      run: cat buildozer.spec
-        
-    - name: Build APK
-      run: |
-        export PATH=$PATH:/home/runner/.local/bin
-        export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
-        
-        # Ждём завершения фикса пути (если он ещё работает)
-        if [ -n "$FIX_PID" ] && kill -0 $FIX_PID 2>/dev/null; then
-          wait $FIX_PID || true
-        fi
-        
-        # Запускаем сборку
-        buildozer -v android debug 2>&1 | tee build_output.log
-      continue-on-error: true
-        
-    - name: Show last 100 lines of log
-      run: tail -n 100 build_output.log || echo "Log file not found"
-        
-    - name: Upload APK (if success)
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: messenger-apk
-        path: bin/*.apk
-        retention-days: 30
-        
-    - name: Upload full log (always)
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-full-log
-        path: build_output.log
-        retention-days: 7
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev libgl1-mesa-dev libgles2-mesa-dev libmtdev-dev xclip xsel libjpeg-dev libunwind-dev wget
+          pip3 install --user buildozer==1.5.0 cython==0.29.33
+
+      - name: Prepare licenses
+        run: |
+          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "d975f751698a77b662f1254ddbeed3901e976f5a" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+
+      - name: Prepare buildozer.spec
+        run: |
+          if [ ! -f buildozer.spec ]; then buildozer init; fi
+          sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
+          sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
+          sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
+          sed -i 's/requirements = python3/requirements = python3,kivy/' buildozer.spec
+          sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
+          sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          sed -i 's/# orientation = portrait/orientation = portrait/' buildozer.spec
+          sed -i 's/# android.api =/android.api = 33/' buildozer.spec
+          sed -i 's/# android.minapi =/android.minapi = 21/' buildozer.spec
+          sed -i 's/# android.ndk =/android.ndk = 23b/' buildozer.spec
+
+      - name: Build APK
+        run: |
+          export PATH=$PATH:/home/runner/.local/bin
+          export JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64
+          buildozer -v android debug
+        continue-on-error: true
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: messenger-apk
+          path: bin/*.apk
+          retention-days: 30
