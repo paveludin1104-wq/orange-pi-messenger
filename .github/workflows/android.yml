@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # ✅ Фикс предупреждения Node.js
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -27,9 +27,37 @@ jobs:
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev libgl1-mesa-dev libgles2-mesa-dev libmtdev-dev xclip xsel libjpeg-dev libunwind-dev wget
           pip3 install --user buildozer==1.5.0 cython==0.29.33
 
+      - name: ✅ Pre-create Android SDK license files (RELIABLE METHOD)
+        run: |
+          # Создаём директорию для лицензий ДО запуска buildozer
+          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
+          
+          # ✅ Хэши для android-sdk-license (основная лицензия)
+          # Эти хэши соответствуют актуальным лицензиям Google
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "d975f751698a77b662f1254ddbeed3901e976f5a" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "504667f4c0de7af1a06de9f4b1727b84351f2910" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "4010355254c3064d23e2e55f3e7f4c38e8e1a9f4" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          
+          # ✅ Хэши для android-sdk-preview-license (для preview-компонентов)
+          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+          
+          # ✅ Показываем, что создалось
+          echo "=== License files created ==="
+          ls -la $HOME/.buildozer/android/platform/android-sdk/licenses/
+          echo "=== android-sdk-license ==="
+          cat $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "=== android-sdk-preview-license ==="
+          cat $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+
       - name: Prepare buildozer.spec
         run: |
           if [ ! -f buildozer.spec ]; then buildozer init; fi
+          
+          # ✅ Настраиваем buildozer.spec
           sed -i 's/title = My Application/title = Orange Pi Messenger/' buildozer.spec
           sed -i 's/package.name = myapp/package.name = messenger/' buildozer.spec
           sed -i 's/package.domain = org.test/package.domain = org.orangepi/' buildozer.spec
@@ -37,23 +65,18 @@ jobs:
           sed -i 's/# android.permissions =/android.permissions = INTERNET,ACCESS_NETWORK_STATE/' buildozer.spec
           sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           sed -i 's/# orientation = portrait/orientation = portrait/' buildozer.spec
+          
+          # ✅ КРИТИЧЕСКИ ВАЖНО: Используем СТАБИЛЬНЫЕ версии (НЕ rc!)
           sed -i 's/# android.api =/android.api = 33/' buildozer.spec
           sed -i 's/# android.minapi =/android.minapi = 21/' buildozer.spec
           sed -i 's/# android.ndk =/android.ndk = 23b/' buildozer.spec
-
-      - name: Accept Android SDK licenses
-        run: |
-          # Ждём появления sdkmanager и принимаем лицензии
-          for i in {1..60}; do
-            SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
-            SDKMANAGER=$(find "$SDK_PATH" -name "sdkmanager" -type f 2>/dev/null | head -1)
-            if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
-              yes | $SDKMANAGER --licenses --sdk_root="$SDK_PATH" || true
-              echo "✅ Licenses accepted!"
-              break
-            fi
-            sleep 5
-          done
+          
+          # ✅ Явно указываем стабильную версию build-tools (избегаем 37.0.0-rc2!)
+          echo 'android.build_tools_version = "33.0.2"' >> buildozer.spec
+          
+          # ✅ Показываем итоговый конфиг
+          echo "=== Final buildozer.spec ==="
+          cat buildozer.spec
 
       - name: Build APK
         run: |
